@@ -1,3 +1,6 @@
+import json
+
+
 from collections import (
     Iterable,
     Mapping,
@@ -27,6 +30,8 @@ def hex_to_integer(value):
 
 
 integer_to_hex = hex
+
+
 
 
 @curry
@@ -63,6 +68,8 @@ def apply_formatter_if(condition, formatter, value):
 @curry
 @to_dict
 def apply_formatters_to_dict(formatters, value):
+    if isinstance(value, str):
+        value = json.loads(value)
     for key, item in value.items():
         if key in formatters:
             try:
