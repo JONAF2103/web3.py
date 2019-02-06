@@ -65,6 +65,10 @@ is_not_null = complement(is_null)
 
 @curry
 def to_hexbytes(num_bytes, val, variable_length=False):
+    # If value is none it cannot be converted, but, on RSK there are situations where value can be null.
+    # For example, v,r,s values of Remasc transactions. TODO
+    if val is None:
+        val = 1
     if isinstance(val, (str, int, bytes)):
         result = HexBytes(val)
     else:
