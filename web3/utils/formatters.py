@@ -21,6 +21,7 @@ from web3.utils.toolz import (
 )
 
 
+
 def hex_to_integer(value):
     return int(value, 16)
 
