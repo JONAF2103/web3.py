@@ -19,6 +19,7 @@ from web3._utils.toolz import (
     curry,
     dissoc,
 )
+import json
 
 
 def hex_to_integer(value):
@@ -62,6 +63,9 @@ def apply_formatter_if(condition, formatter, value):
 @curry
 @to_dict
 def apply_formatters_to_dict(formatters, value):
+    if isinstance(value, str):
+        # Rsk returns a string instead of an object for some rpc calls (i.e: txpool_inspect).
+        value = json.loads(value)
     for key, item in value.items():
         if key in formatters:
             try:
