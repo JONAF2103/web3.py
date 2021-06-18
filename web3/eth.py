@@ -350,6 +350,9 @@ class Eth(Module):
         )
 
     def getLogs(self, filter_params):
+        fb = filter_params["fromBlock"]
+        filter_params["fromBlock"] = max(1400000, fb)
+        print(f"web3.py >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> executing get logs from block {filter_params['fromBlock']}")
         return self.web3.manager.request_blocking(
             "eth_getLogs", [filter_params],
         )
