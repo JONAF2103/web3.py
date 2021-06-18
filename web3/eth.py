@@ -361,12 +361,12 @@ class Eth(Module):
         )
 
     def getLogs(self, filter_params):
-        from_block = filter_params["fromBlock"]
-        to_block = filter_params["toBlock"]
-        batch_size = filter_params["batchSize"] if filter_params["batchSize"] else GET_LOGS_BATCH_SIZE
+        from_block = filter_params["fromBlock"] if "batchSize" in filter_params else self.getBlock('earliest')
+        to_block = filter_params["toBlock"] if "batchSize" in filter_params else self.getBlock('latest')
+        batch_size = filter_params["batchSize"] if "batchSize" in filter_params else GET_LOGS_BATCH_SIZE
         wait_for_request = \
-            filter_params["waitForRequest"] if filter_params["waitForRequest"] else GET_LOGS_MAX_WAIT_FOR_REQUEST
-        retries = filter_params["retries"] if filter_params["retries"] else GET_LOGS_MAX_RETRIES
+            filter_params["waitForRequest"] if "waitForRequest" in filter_params else GET_LOGS_MAX_WAIT_FOR_REQUEST
+        retries = filter_params["retries"] if "retries" in filter_params else GET_LOGS_MAX_RETRIES
 
         current_batch_start = int(from_block)
         current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
