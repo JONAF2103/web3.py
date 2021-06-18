@@ -361,8 +361,8 @@ class Eth(Module):
         )
 
     def getLogs(self, filter_params):
-        from_block = filter_params["fromBlock"] if "batchSize" in filter_params else self.getBlock('earliest')
-        to_block = filter_params["toBlock"] if "batchSize" in filter_params else self.getBlock('latest')
+        from_block = filter_params["fromBlock"] if "batchSize" in filter_params else self.getBlock("earliest")["number"]
+        to_block = filter_params["toBlock"] if "batchSize" in filter_params else self.getBlock("latest")["number"]
         batch_size = filter_params["batchSize"] if "batchSize" in filter_params else GET_LOGS_BATCH_SIZE
         wait_for_request = \
             filter_params["waitForRequest"] if "waitForRequest" in filter_params else GET_LOGS_MAX_WAIT_FOR_REQUEST
