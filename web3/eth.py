@@ -51,12 +51,138 @@ from web3.utils.transactions import (
     wait_for_transaction_receipt,
 )
 
-# 10000 blocks
-GET_LOGS_BATCH_SIZE: int = 10000
+from typing import Dict
+
+# 300000 blocks
+GET_LOGS_BATCH_SIZE: int = 300000
 
 GET_LOGS_MAX_RETRIES: int = 5
 
+# cache timeout in ms
+CACHE_TIMEOUT: int = 60000
+
+
+
 logger = logging.getLogger(__name__)
+
+class EthGetLogsCachedValue():
+
+    def __init__(self, address, topics, from_block, to_block, logs):
+        self.address = address
+        self.topics = topics
+        self.from_block = from_block
+        self.to_block = to_block
+        self.logs = logs
+
+    def get_logs(self, from_block, to_block):
+        logs = list()
+        for log in self.logs:
+            print(f">>>>>>>>>>>>>>>>. log {log}")
+            # TODO: fix the log search because is not working properly, always returns empty list
+            log_block_number = int(str(log["blockNumber"]), 16)
+            if log_block_number >= from_block and log_block_number <= to_block:
+                logs.append(log)
+        print(f"returning cached logs from {from_block} to {to_block}", logs)
+        return logs
+
+class EthGetLogsCache():
+
+    logs: Dict[str, EthGetLogsCachedValue]
+
+    def __init__(self, web3):
+        self.logs = {}
+        self.web3 = web3
+
+    def get_next_batch_end(self, current_batch_start: int, final_block_number, batch_size=GET_LOGS_BATCH_SIZE):
+        current_batch_end = current_batch_start + batch_size
+        return min(current_batch_end, final_block_number)
+
+    def get_logs(self, filter_params):
+
+        from_block = filter_params["fromBlock"]
+        to_block = filter_params["toBlock"]
+
+        batch_size = filter_params["batchSize"] if "batchSize" in filter_params else GET_LOGS_BATCH_SIZE
+        retries = filter_params["retries"] if "retries" in filter_params else GET_LOGS_MAX_RETRIES
+
+        address = filter_params["address"] if "address" in filter_params else ""
+        topics = filter_params["topics"] if "topics" in filter_params else ""
+
+        current_batch_start = int(from_block)
+        current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
+
+        logs = list()
+
+        while current_batch_start < current_batch_end:
+            filter_params["fromBlock"] = current_batch_start
+            filter_params["toBlock"] = current_batch_end
+            log_list = None
+            for currentTry in range(1, (retries + 1)):
+                try:
+                    print(f'Trying to get logs with params {filter_params} '
+                          f'from block {current_batch_start} to block {current_batch_end}. '
+                          f'(attempt {currentTry})')
+                    log_list = self.web3.manager.request_blocking(
+                        "eth_getLogs", [filter_params],
+                    )
+                    break
+                except ValueError as e:
+                    print(f'Error trying to get logs with params {filter_params} '
+                          f'from block {current_batch_start} to block {current_batch_end}', e)
+            if log_list is None:
+                raise ValueError(f'Error trying to get logs with params {filter_params} '
+                                 f'from block {current_batch_start} to block {current_batch_end}')
+            else:
+                for log in log_list:
+                    logs.append(log)
+                current_batch_start = current_batch_end + 1
+                current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
+
+        return logs
+
+
+
+    def generate_cache_key(self, address, topics) -> str:
+        return hash(f"logs_{address}_{topics}")
+
+    def get(self, filter_params, earliest_block_number, latest_block_number) -> EthGetLogsCachedValue:
+        from_block = filter_params["fromBlock"] if "batchSize" in filter_params else earliest_block_number
+        to_block = filter_params["toBlock"] if "batchSize" in filter_params else latest_block_number
+        address = filter_params["address"] if "address" in filter_params else ""
+        topics = filter_params["topics"] if "topics" in filter_params else ""
+        invalidate_cache = filter_params["invalidate_cache"] if "invalidate_cache" in filter_params else False
+        # check the cache before populating with data
+        cache_key = self.generate_cache_key(address, topics)
+        print(f"getting logs with cache key {cache_key}")
+        if cache_key in self.logs and not invalidate_cache:
+            print(f"cache exists and is not being ivalidated")
+            # here we have all the logs from earliest to latest on the last iteration
+            # we need to check if the current iteration doesn't need an update from
+            # latest of last iteration to current block
+            cached_value: EthGetLogsCachedValue = self.logs[cache_key]
+            # we need to leave at least 50 confirmation blocks for reorgs
+            cache_to_block = latest_block_number - 50
+            if cached_value.to_block < cache_to_block:
+                print(f"cache needs update from {cached_value.to_block} to {cache_to_block}")
+                # we need to update this cache from the current to_block to the new cache_to_block
+                filter_params["fromBlock"] = cached_value.to_block
+                filter_params["toBlock"] = cache_to_block
+                logs = self.get_logs(filter_params)
+                cached_value.logs.append(logs)
+                cached_value.to_block = cache_to_block
+                print(f"updated cache")
+            return cached_value.get_logs(from_block, to_block)
+
+        else:
+            print(f"cache doesn't exists or is being invalidated")
+            # retrieve all logs from earliest to latest to populate cache
+            filter_params["fromBlock"] = earliest_block_number
+            filter_params["toBlock"] = latest_block_number
+            logs = self.get_logs(filter_params)
+            print(f"generating and saving cached value logs {logs}")
+            cached_value = EthGetLogsCachedValue(address, topics, earliest_block_number, latest_block_number, logs)
+            self.logs[cache_key] = cached_value
+            return cached_value.get_logs(from_block, to_block)
 
 class Eth(Module):
     account = Account()
@@ -65,6 +191,11 @@ class Eth(Module):
     defaultContractFactory = Contract
     iban = Iban
     gasPriceStrategy = None
+    logs_cache: EthGetLogsCache
+
+    def __init__(self, web3):
+        super().__init__(web3)
+        self.logs_cache = EthGetLogsCache(web3)
 
     @deprecated_for("doing nothing at all")
     def enable_unaudited_features(self):
@@ -358,45 +489,7 @@ class Eth(Module):
         )
 
     def getLogs(self, filter_params):
-        from_block = filter_params["fromBlock"] if "batchSize" in filter_params else self.getBlock("earliest")["number"]
-        to_block = filter_params["toBlock"] if "batchSize" in filter_params else self.getBlock("latest")["number"]
-        batch_size = filter_params["batchSize"] if "batchSize" in filter_params else GET_LOGS_BATCH_SIZE
-        retries = filter_params["retries"] if "retries" in filter_params else GET_LOGS_MAX_RETRIES
-
-        current_batch_start = int(from_block)
-        current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
-
-        logs = list()
-
-        while current_batch_start < current_batch_end:
-            filter_params["fromBlock"] = current_batch_start
-            filter_params["toBlock"] = current_batch_end
-            log_list = None
-            for currentTry in range(0, retries):
-                try:
-                    logger.debug(f'Trying to get logs with params {filter_params} '
-                                 f'from block {current_batch_start} to block {current_batch_end}. (attempt {currentTry})')
-                    log_list = self.web3.manager.request_blocking(
-                        "eth_getLogs", [filter_params],
-                    )
-                    break
-                except ValueError as e:
-                    logger.warning(f'Error trying to get logs with params {filter_params} '
-                                   f'from block {current_batch_start} to block {current_batch_end}', e)
-            if log_list is None:
-                raise ValueError(f'Error trying to get logs with params {filter_params} '
-                                 f'from block {current_batch_start} to block {current_batch_end}')
-            else:
-                for log in log_list:
-                    logs.append(log)
-                current_batch_start = current_batch_end + 1
-                current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
-
-        return logs
-
-    def get_next_batch_end(self, current_batch_start: int, final_block_number, batch_size=GET_LOGS_BATCH_SIZE):
-        current_batch_end = current_batch_start + batch_size
-        return min(current_batch_end, final_block_number)
+        return self.logs_cache.get(filter_params, self.getBlock('earliest')["number"], self.getBlock('latest')["number"])
 
     def uninstallFilter(self, filter_id):
         return self.web3.manager.request_blocking(
