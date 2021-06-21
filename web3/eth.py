@@ -54,12 +54,9 @@ from web3.utils.transactions import (
 # 10000 blocks
 GET_LOGS_BATCH_SIZE: int = 10000
 
-# 120 seconds
-GET_LOGS_MAX_WAIT_FOR_REQUEST: int = 120000
-
 GET_LOGS_MAX_RETRIES: int = 5
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class Eth(Module):
     account = Account()
@@ -364,40 +361,38 @@ class Eth(Module):
         from_block = filter_params["fromBlock"] if "batchSize" in filter_params else self.getBlock("earliest")["number"]
         to_block = filter_params["toBlock"] if "batchSize" in filter_params else self.getBlock("latest")["number"]
         batch_size = filter_params["batchSize"] if "batchSize" in filter_params else GET_LOGS_BATCH_SIZE
-        wait_for_request = \
-            filter_params["waitForRequest"] if "waitForRequest" in filter_params else GET_LOGS_MAX_WAIT_FOR_REQUEST
         retries = filter_params["retries"] if "retries" in filter_params else GET_LOGS_MAX_RETRIES
 
         current_batch_start = int(from_block)
         current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
 
-        request_ids = list()
+        logs = list()
 
         while current_batch_start < current_batch_end:
             filter_params["fromBlock"] = current_batch_start
             filter_params["toBlock"] = current_batch_end
-            log.debug(f'Trying to get logs with params {filter_params} '
-                      f'from block {current_batch_start} to block {current_batch_end}')
-            request_ids.append(self.web3.manager.request_async(
-                "eth_getLogs", [filter_params],
-            ))
-
-        responses = list()
-
-        # wait for the pending requests to retrieve all the values
-        for request_id in request_ids:
-            response = None
+            log_list = None
             for currentTry in range(0, retries):
                 try:
-                    response = self.web3.manager.receive_blocking(request_id, wait_for_request)
+                    logger.debug(f'Trying to get logs with params {filter_params} '
+                                 f'from block {current_batch_start} to block {current_batch_end}. (attempt {currentTry})')
+                    log_list = self.web3.manager.request_blocking(
+                        "eth_getLogs", [filter_params],
+                    )
                     break
                 except ValueError as e:
-                    log.warning(f'Error trying to get logs on batch with id {request_id}', e)
-            if not response:
-                raise ValueError(f'Error trying to get logs on batch with id {request_id}')
-            responses.append(response)
+                    logger.warning(f'Error trying to get logs with params {filter_params} '
+                                   f'from block {current_batch_start} to block {current_batch_end}', e)
+            if log_list is None:
+                raise ValueError(f'Error trying to get logs with params {filter_params} '
+                                 f'from block {current_batch_start} to block {current_batch_end}')
+            else:
+                for log in log_list:
+                    logs.append(log)
+                current_batch_start = current_batch_end + 1
+                current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
 
-        raise ValueError(f'responses={responses}')
+        return logs
 
     def get_next_batch_end(self, current_batch_start: int, final_block_number, batch_size=GET_LOGS_BATCH_SIZE):
         current_batch_end = current_batch_start + batch_size
