@@ -113,12 +113,12 @@ class RequestManager:
 
         return response['result']
 
-    def request_async(self, method, params):
+    def request_async(self, raw_method, raw_params):
         request_id = uuid.uuid4()
         self.pending_requests[request_id] = spawn(
             self.request_blocking,
-            method,
-            params,
+            raw_method=raw_method,
+            raw_params=raw_params,
         )
         return request_id
 
