@@ -10,10 +10,6 @@ GET_LOGS_BATCH_SIZE: int = 300000  # 300000 blocks
 
 GET_LOGS_MAX_RETRIES: int = 5
 
-CACHE_TIMEOUT: int = 60000  # in ms
-
-CONFIRMATION_BLOCKS: int = 50  # 50 blocks
-
 
 class EthLogsManager:
 
