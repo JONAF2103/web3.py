@@ -66,7 +66,8 @@ CONFIRMATION_BLOCKS: int = 50
 
 logger = logging.getLogger(__name__)
 
-class EthGetLogsCachedValue():
+
+class EthGetLogsCachedValue:
 
     def __init__(self, address, topics, from_block, to_block, logs):
         self.address = address
@@ -81,45 +82,37 @@ class EthGetLogsCachedValue():
             # this is needed since rskj sometimes provide events without blockNumber
             # (that's something that sometimes happens but not always, seems to be a bug on the core)
             log_block_number = log['blockNumber'] if "blockNumber" in log else None
-            if log_block_number and log_block_number >= from_block and log_block_number <= to_block:
+            if log_block_number and from_block <= log_block_number <= to_block:
                 logs.append(log)
         logger.debug(f"Getting logs from cached value from block {from_block} to block {to_block} -> logs {logs}")
         return logs
 
-class EthGetLogsCache():
 
-    logs: Dict[str, EthGetLogsCachedValue]
+class EthGetLogsCache:
+
+    logs: Dict[int, EthGetLogsCachedValue]
 
     def __init__(self, web3):
         self.logs = {}
         self.web3 = web3
 
-    def get_next_batch_end(self, current_batch_start: int, final_block_number, batch_size=GET_LOGS_BATCH_SIZE):
+    @staticmethod
+    def get_next_batch_end(current_batch_start: int, final_block_number, batch_size=GET_LOGS_BATCH_SIZE):
         current_batch_end = current_batch_start + batch_size
         return min(current_batch_end, final_block_number)
 
     def get_logs(self, filter_params):
-
         from_block = filter_params["fromBlock"]
         to_block = filter_params["toBlock"]
-
         batch_size = filter_params["batchSize"] if "batchSize" in filter_params else GET_LOGS_BATCH_SIZE
         retries = filter_params["retries"] if "retries" in filter_params else GET_LOGS_MAX_RETRIES
-
         if "batchSize" in filter_params:
             del filter_params["batchSize"]
-
         if "retries" in filter_params:
             del filter_params["retries"]
-
-        address = filter_params["address"] if "address" in filter_params else ""
-        topics = filter_params["topics"] if "topics" in filter_params else ""
-
         current_batch_start = int(from_block)
-        current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
-
+        current_batch_end = EthGetLogsCache.get_next_batch_end(current_batch_start, to_block, batch_size)
         logs = list()
-
         while current_batch_start < current_batch_end:
             filter_params["fromBlock"] = current_batch_start
             filter_params["toBlock"] = current_batch_end
@@ -127,15 +120,15 @@ class EthGetLogsCache():
             for currentTry in range(1, (retries + 1)):
                 try:
                     logger.debug(f'Trying to get logs with params {filter_params} '
-                          f'from block {current_batch_start} to block {current_batch_end}. '
-                          f'(attempt {currentTry})')
+                                 f'from block {current_batch_start} to block {current_batch_end}. '
+                                 f'(attempt {currentTry})')
                     log_list = self.web3.manager.request_blocking(
                         "eth_getLogs", [filter_params],
                     )
                     break
                 except ValueError as e:
                     logger.warning(f'Error trying to get logs with params {filter_params} '
-                          f'from block {current_batch_start} to block {current_batch_end}', e)
+                                   f'from block {current_batch_start} to block {current_batch_end}', e)
             if log_list is None:
                 raise ValueError(f'Error trying to get logs with params {filter_params} '
                                  f'from block {current_batch_start} to block {current_batch_end}')
@@ -143,16 +136,15 @@ class EthGetLogsCache():
                 for log in log_list:
                     logs.append(log)
                 current_batch_start = current_batch_end + 1
-                current_batch_end = self.get_next_batch_end(current_batch_start, to_block, batch_size)
+                current_batch_end = EthGetLogsCache.get_next_batch_end(current_batch_start, to_block, batch_size)
 
         return logs
 
-
-
-    def generate_cache_key(self, address, topics) -> str:
+    @staticmethod
+    def generate_cache_key(address, topics) -> int:
         return hash(f"logs_{address}_{topics}")
 
-    def get(self, filter_params, earliest_block_number, latest_block_number) -> EthGetLogsCachedValue:
+    def get(self, filter_params, earliest_block_number, latest_block_number) -> list:
         from_block = filter_params["fromBlock"] if "fromBlock" in filter_params else earliest_block_number
         to_block = filter_params["toBlock"] if "toBlock" in filter_params else latest_block_number
         address = filter_params["address"] if "address" in filter_params else ""
@@ -192,6 +184,7 @@ class EthGetLogsCache():
             cached_value = EthGetLogsCachedValue(address, topics, earliest_block_number, latest_block_number, logs)
             self.logs[cache_key] = cached_value
             return cached_value.get_logs(from_block, to_block)
+
 
 class Eth(Module):
     account = Account()
@@ -498,7 +491,9 @@ class Eth(Module):
         )
 
     def getLogs(self, filter_params):
-        return self.logs_cache.get(filter_params, self.getBlock('earliest')["number"], self.getBlock('latest')["number"])
+        return self.logs_cache.get(filter_params,
+                                   self.getBlock('earliest')["number"],
+                                   self.getBlock('latest')["number"])
 
     def uninstallFilter(self, filter_id):
         return self.web3.manager.request_blocking(
