@@ -74,7 +74,7 @@ class EthGetLogsCachedValue:
                  topics: List[str],
                  from_block: int,
                  to_block: int,
-                 logs: List):
+                 logs: List[Dict]):
         self.address = address
         self.topics = topics
         self.from_block = from_block
