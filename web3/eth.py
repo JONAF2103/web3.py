@@ -163,7 +163,7 @@ class EthGetLogsCache:
         cache_key: int = self.generate_cache_key(address, topics)
         logger.debug(f"getting logs with cache key {cache_key}")
         if cache_key in self.logs and not invalidate_cache:
-            logger.debug(f"cache exists and is not being ivalidated")
+            logger.debug(f"cache exists and is not being invalidated")
             # here we have all the logs from earliest to latest on the last iteration
             # we need to check if the current iteration doesn't need an update from
             # latest of last iteration to current block
