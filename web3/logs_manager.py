@@ -14,7 +14,6 @@ GET_LOGS_MAX_RETRIES: int = 5
 class EthLogsManager:
 
     def __init__(self, web3):
-        self.logs: Dict[int, EthLogsCacheEntry] = {}
         self.web3 = web3
 
     @staticmethod
