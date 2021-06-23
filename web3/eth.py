@@ -51,7 +51,7 @@ from web3.utils.transactions import (
     wait_for_transaction_receipt,
 )
 
-from typing import Dict
+from typing import Dict, List, Any
 
 # 300000 blocks
 GET_LOGS_BATCH_SIZE: int = 300000
@@ -69,19 +69,24 @@ logger = logging.getLogger(__name__)
 
 class EthGetLogsCachedValue:
 
-    def __init__(self, address, topics, from_block, to_block, logs):
+    def __init__(self,
+                 address: str,
+                 topics: List[str],
+                 from_block: int,
+                 to_block: int,
+                 logs: List):
         self.address = address
         self.topics = topics
         self.from_block = from_block
         self.to_block = to_block
         self.logs = logs
 
-    def get_logs(self, from_block, to_block):
+    def get_logs(self, from_block: int, to_block: int):
         logs = list()
         for log in self.logs:
             # this is needed since rskj sometimes provide events without blockNumber
             # (that's something that sometimes happens but not always, seems to be a bug on the core)
-            log_block_number = log['blockNumber'] if "blockNumber" in log else None
+            log_block_number: int = log['blockNumber'] if "blockNumber" in log else None
             if log_block_number and from_block <= log_block_number <= to_block:
                 logs.append(log)
         logger.debug(f"Getting logs from cached value from block {from_block} to block {to_block} -> logs {logs}")
@@ -97,21 +102,23 @@ class EthGetLogsCache:
         self.web3 = web3
 
     @staticmethod
-    def get_next_batch_end(current_batch_start: int, final_block_number, batch_size=GET_LOGS_BATCH_SIZE):
+    def get_next_batch_end(current_batch_start: int,
+                           final_block_number: int,
+                           batch_size: int = GET_LOGS_BATCH_SIZE) -> int:
         current_batch_end = current_batch_start + batch_size
         return min(current_batch_end, final_block_number)
 
     def get_logs(self, filter_params):
-        from_block = filter_params["fromBlock"]
-        to_block = filter_params["toBlock"]
-        batch_size = filter_params["batchSize"] if "batchSize" in filter_params else GET_LOGS_BATCH_SIZE
-        retries = filter_params["retries"] if "retries" in filter_params else GET_LOGS_MAX_RETRIES
+        from_block: int = filter_params["fromBlock"]
+        to_block: int = filter_params["toBlock"]
+        batch_size: int = filter_params["batchSize"] if "batchSize" in filter_params else GET_LOGS_BATCH_SIZE
+        retries: int = filter_params["retries"] if "retries" in filter_params else GET_LOGS_MAX_RETRIES
         if "batchSize" in filter_params:
             del filter_params["batchSize"]
         if "retries" in filter_params:
             del filter_params["retries"]
-        current_batch_start = int(from_block)
-        current_batch_end = EthGetLogsCache.get_next_batch_end(current_batch_start, to_block, batch_size)
+        current_batch_start: int = int(from_block)
+        current_batch_end: int = EthGetLogsCache.get_next_batch_end(current_batch_start, to_block, batch_size)
         logs = list()
         while current_batch_start < current_batch_end:
             filter_params["fromBlock"] = current_batch_start
@@ -141,19 +148,19 @@ class EthGetLogsCache:
         return logs
 
     @staticmethod
-    def generate_cache_key(address, topics) -> int:
+    def generate_cache_key(address: str, topics: List[str]) -> int:
         return hash(f"logs_{address}_{topics}")
 
-    def get(self, filter_params, earliest_block_number, latest_block_number) -> list:
-        from_block = filter_params["fromBlock"] if "fromBlock" in filter_params else earliest_block_number
-        to_block = filter_params["toBlock"] if "toBlock" in filter_params else latest_block_number
-        address = filter_params["address"] if "address" in filter_params else ""
-        topics = filter_params["topics"] if "topics" in filter_params else ""
-        invalidate_cache = filter_params["invalidate_cache"] if "invalidate_cache" in filter_params else False
+    def get(self, filter_params: Any, earliest_block_number: int, latest_block_number: int) -> List:
+        from_block: int = filter_params["fromBlock"] if "fromBlock" in filter_params else earliest_block_number
+        to_block: int = filter_params["toBlock"] if "toBlock" in filter_params else latest_block_number
+        address: str = filter_params["address"] if "address" in filter_params else ""
+        topics: List[str] = filter_params["topics"] if "topics" in filter_params else ""
+        invalidate_cache: bool = filter_params["invalidate_cache"] if "invalidate_cache" in filter_params else False
         if "invalidate_cache" in filter_params:
             del filter_params["invalidate_cache"]
         # check the cache before populating with data
-        cache_key = self.generate_cache_key(address, topics)
+        cache_key: int = self.generate_cache_key(address, topics)
         logger.debug(f"getting logs with cache key {cache_key}")
         if cache_key in self.logs and not invalidate_cache:
             logger.debug(f"cache exists and is not being ivalidated")
@@ -162,7 +169,7 @@ class EthGetLogsCache:
             # latest of last iteration to current block
             cached_value: EthGetLogsCachedValue = self.logs[cache_key]
             # we need to leave at least a number of confirmation blocks for reorgs
-            cache_to_block = latest_block_number - CONFIRMATION_BLOCKS
+            cache_to_block: int = latest_block_number - CONFIRMATION_BLOCKS
             if cached_value.to_block < cache_to_block:
                 logger.debug(f"cache needs update from {cached_value.to_block} to {cache_to_block}")
                 # we need to update this cache from the current to_block to the new cache_to_block
