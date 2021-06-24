@@ -21,6 +21,24 @@ class EthLogsManager:
         current_batch_end = current_batch_start + batch_size
         return min(current_batch_end, final_block_number)
 
+    def fetch_logs(self, filter_params: Dict,
+                   current_batch_start: int,
+                   current_batch_end: int,
+                   retries: int) -> List[dict]:
+        for currentTry in range(retries):
+            try:
+                logger.debug(f'Trying to get logs with params {filter_params} '
+                             f'from block {current_batch_start} to block {current_batch_end}. '
+                             f'(attempt {currentTry + 1})')
+                return self.web3.manager.request_blocking(
+                    "eth_getLogs", [filter_params],
+                )
+            except ValueError as e:
+                logger.warning(f'Error trying to get logs with params {filter_params} '
+                               f'from block {current_batch_start} to block {current_batch_end}', e)
+        raise ValueError(f'Error trying to get logs with params {filter_params} '
+                         f'from block {current_batch_start} to block {current_batch_end}')
+
     def get_logs(self, filter_params: Dict, earliest_block_number: int, latest_block_number: int) -> List[dict]:
         from_block = EthLogsManager.block_identifier_to_number(
             filter_params.get("fromBlock", earliest_block_number),
@@ -43,33 +61,12 @@ class EthLogsManager:
         while current_batch_start <= current_batch_end:
             filter_params["fromBlock"] = current_batch_start
             filter_params["toBlock"] = current_batch_end
-            log_list = None
-            for currentTry in range(retries):
-                try:
-                    logger.debug(f'Trying to get logs with params {filter_params} '
-                                 f'from block {current_batch_start} to block {current_batch_end}. '
-                                 f'(attempt {currentTry + 1})')
-                    log_list = self.web3.manager.request_blocking(
-                        "eth_getLogs", [filter_params],
-                    )
-                    break
-                except ValueError as e:
-                    logger.warning(f'Error trying to get logs with params {filter_params} '
-                                   f'from block {current_batch_start} to block {current_batch_end}', e)
-            if log_list is None:
-                raise ValueError(f'Error trying to get logs with params {filter_params} '
-                                 f'from block {current_batch_start} to block {current_batch_end}')
-            else:
-                for log in log_list:
-                    logs.append(log)
+            logs_batch = self.fetch_logs(filter_params, retries)
+            for log in logs_batch:
+                logs.append(log)
                 current_batch_start = current_batch_end + 1
                 current_batch_end = EthLogsManager.get_next_batch_end(current_batch_start, to_block, batch_size)
-
         return logs
-
-    @staticmethod
-    def generate_cache_key(address: str, topics: List[str]) -> int:
-        return hash(f"logs_{address}_{topics.sort()}")
 
     @staticmethod
     def block_identifier_to_number(block_identifier: Any, earliest_block_number: int, latest_block_number: int) -> int:

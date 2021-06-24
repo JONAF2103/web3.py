@@ -58,7 +58,6 @@ class Eth(Module):
     defaultContractFactory = Contract
     iban = Iban
     gasPriceStrategy = None
-    logs_manager: EthLogsManager
 
     def __init__(self, web3):
         super().__init__(web3)
