@@ -40,7 +40,7 @@ class EthLogsManager:
         current_batch_start: int = int(from_block)
         current_batch_end: int = EthLogsManager.get_next_batch_end(current_batch_start, to_block, batch_size)
         logs = []
-        while current_batch_start < current_batch_end:
+        while current_batch_start <= current_batch_end:
             filter_params["fromBlock"] = current_batch_start
             filter_params["toBlock"] = current_batch_end
             log_list = None
