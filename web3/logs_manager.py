@@ -61,11 +61,11 @@ class EthLogsManager:
         while current_batch_start <= current_batch_end:
             filter_params["fromBlock"] = current_batch_start
             filter_params["toBlock"] = current_batch_end
-            logs_batch = self.fetch_logs(filter_params, retries)
+            logs_batch = self.fetch_logs(filter_params, current_batch_start, current_batch_end, retries)
             for log in logs_batch:
                 logs.append(log)
-                current_batch_start = current_batch_end + 1
-                current_batch_end = EthLogsManager.get_next_batch_end(current_batch_start, to_block, batch_size)
+            current_batch_start = current_batch_end + 1
+            current_batch_end = EthLogsManager.get_next_batch_end(current_batch_start, to_block, batch_size)
         return logs
 
     @staticmethod
