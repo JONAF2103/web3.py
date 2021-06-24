@@ -62,7 +62,7 @@ class Eth(Module):
 
     def __init__(self, web3):
         super().__init__(web3)
-        self.logs_cache = EthLogsManager(web3)
+        self.logs_manager = EthLogsManager(web3)
 
     @deprecated_for("doing nothing at all")
     def enable_unaudited_features(self):

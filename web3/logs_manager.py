@@ -2,8 +2,6 @@ import logging
 
 from typing import List, Dict, Any
 
-from web3.logs_entry import EthLogsCacheEntry
-
 logger = logging.getLogger(__name__)
 
 GET_LOGS_BATCH_SIZE: int = 300000  # 300000 blocks
